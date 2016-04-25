@@ -12,19 +12,20 @@
 # required elements: description, link, name, title
 
 from datetime import datetime
-from urllib import parse, request
+from urllib import request
 from soundscrape import soundscrape
 from glob import glob
 from os import path, rename, remove
 from sys import argv
 import xml.etree.ElementTree as ET
 
+
 def encode(string):
     # escape for usage in XML
-    
-    if '&#39;' in string or '&quot;' in string or '&lt;' in string or '&gt;' in string or '&amp;' in string: # already encoded
+
+    if '&#39;' in string or '&quot;' in string or '&lt;' in string or '&gt;' in string or '&amp;' in string:  # already encoded
         return string
-    
+
     magic = 'ßﬁæœXXXa_a_a666mixcast'
     if magic in string:
         print('ERROR: string encoding failed')
@@ -47,7 +48,7 @@ def encode(string):
 def decode(string):
     # unescape from usage in XML
 
-    if '&#39;' not in string and '&quot;' not in string and '&lt;' not in string and '&gt;' not in string and '&amp;' not in string: # already decoded
+    if '&#39;' not in string and '&quot;' not in string and '&lt;' not in string and '&gt;' not in string and '&amp;' not in string:  # already decoded
         return string
 
     string = string.replace('&#39;', "'")
@@ -58,9 +59,10 @@ def decode(string):
     return string
 
 
-def getRss(mixcloudAccount):
+def get_rss(mixcloud_account):
     # download rss feed with latest uploads
-    url = 'http://mixcloud-rss.georgipavlov.com/{}/m4a/30'.format(mixcloudAccount)
+    url = 'http://mixcloud-rss.georgipavlov.com/{}/m4a/30'.format(
+        mixcloud_account)
     hdr = {'User-Agent': 'Mozilla/5.0'}
     req = request.Request(url, headers=hdr)
     try:
@@ -91,29 +93,33 @@ def download_or_delete(items, files):
             remove(key)
 
 
-def write_items(items, rssfile):
+def write_items(items, filenames, rssfile):
     # write all items
-    for filename, values in sorted(items.items()):
-        rssfile.write('    <item>\n')	
+    for filename in filenames:  # for diff and sorting purposes only
+        values = items[filename]
+        rssfile.write('\n')
+        rssfile.write('        <item>\n')
         url = 'http://{}/{}'.format(urlbase, encode(values['source']))
-        rssfile.write('        <title>{}</title>\n'.format(values['title']))
-        rssfile.write('        <link>{}</link>\n'.format(url))
-        rssfile.write('        <description><![CDATA[{}]]></description>\n'.format(values['description']))
-        rssfile.write('        <pubDate>{}</pubDate>\n'.format(values['pubDate']))
-        rssfile.write('        <enclosure url="{}" length="{}" type="audio/x-m4a"/>\n'.format(url, path.getsize(filename)))
+        rssfile.write('            <title>{}</title>\n'.format(values['title']))
+        rssfile.write('            <link>{}</link>\n'.format(url))
+        rssfile.write('            <description><![CDATA[{}]]></description>\n'.format(values['description']))
+        rssfile.write('            <pubDate>{}</pubDate>\n'.format(values['pubDate']))
+        rssfile.write('            <enclosure url="{}" length="{}" type="audio/x-m4a"/>\n'.format(url, path.getsize(filename)))
         if values['itunesAuthor']:
-            rssfile.write('        <itunes:author>{}<itunes:author/>\n'.format(values['itunesAuthor']))
+            rssfile.write('            <itunes:author>{}<itunes:author/>\n'.format(values['itunesAuthor']))
         if values['itunesSubtitle']:
-            rssfile.write('        <itunes:subtitle>{}<itunes:subtitle/>\n'.format(values['itunesSubtitle']))
+            rssfile.write('            <itunes:subtitle>{}<itunes:subtitle/>\n'.format(values['itunesSubtitle']))
+        else:  # for diff purpses only
+            rssfile.write('            <itunes:subtitle></itunes:subtitle>\n')
         if values['itunesSummary']:
-            rssfile.write('        <itunes:summary><![CDATA[{}]]><itunes:summary/>\n'.format(values['itunesSummary']))
+            rssfile.write('            <itunes:summary><![CDATA[{}]]><itunes:summary/>\n'.format(values['itunesSummary']))
         if values['itunesDuration']:
-            rssfile.write('        <itunes:duration>{}<itunes:duration/>\n'.format(values['itunesDuration']))
-        rssfile.write('        <guid>{}</guid>\n'.format(url))
+            rssfile.write('            <itunes:duration>{}<itunes:duration/>\n'.format(values['itunesDuration']))
+        rssfile.write('            <guid>{}</guid>\n'.format(url))
         if values['itunesImage']:
-            rssfile.write('        <itunes:image href="{}" />\n'.format(values['itunesImage']))
-#TODO        rssfile.write('        <itunes:keywords></itunes:keywords>\n')
-        rssfile.write('    </item>\n')
+            rssfile.write('            <itunes:image href="{}" />\n'.format(values['itunesImage']))
+# TODO        rssfile.write('        <itunes:keywords></itunes:keywords>\n')
+        rssfile.write('        </item>\n')
 
 
 if len(argv) != 5:
@@ -121,7 +127,7 @@ if len(argv) != 5:
     exit(1)
 
 # settings
-mixcloudAccount = argv[1]
+mixcloud_account = argv[1]
 hostname = argv[2]
 website = 'http://{}'.format(hostname)
 urlbase = '{}/{}'.format(hostname, argv[3])
@@ -129,7 +135,7 @@ email = '{}@{}'.format(argv[4], hostname)
 
 files = scan_files()
 
-data = getRss(mixcloudAccount)
+data = get_rss(mixcloud_account)
 # scan rss feed with uploads for metadata
 rssTitle = None
 rssDescription = None
@@ -139,16 +145,17 @@ rssItunesAuthor = None
 rssItunesSubtitle = None
 rssItunesSummary = None
 rssImageUrl = None
-rssImageTitle = None # alles nalopen of leeg gevuld kan worden met zinvols
+rssImageTitle = None  # alles nalopen of leeg gevuld kan worden met zinvols
 rssImageWidth = None
 rssImageHeight = None
 items = {}
+filenames = []  # for diff and sorting purposes only
 rss = ET.fromstring(data)
 for channel in rss:
     for item in channel:
         if item.tag == 'title':
             rssTitle = encode(item.text)
-        elif item.tag == 'atom:link':
+        elif item.tag == '{http://www.w3.org/2005/Atom}link':
             continue  # will be custom from argv
         elif item.tag == 'link':
             continue  # will be custom from argv
@@ -162,21 +169,21 @@ for channel in rss:
             rssLanguage = item.text
             if rssLanguage == '':
                 rssLanguage = None
-        elif item.tag == 'itunes:author':
+        elif item.tag == '{http://www.itunes.com/dtds/podcast-1.0.dtd}author':
             rssItunesAuthor = item.text
             if rssItunesAuthor == '':
                 rssItunesAuthor = None
-        elif item.tag == 'itunes:subtitle':
+        elif item.tag == '{http://www.itunes.com/dtds/podcast-1.0.dtd}subtitle':
             rssItunesSubtitle = item.text
             if rssItunesSubtitle == '':
                 rssItunesSubtitle = None
-        elif item.tag == 'itunes:summary':
+        elif item.tag == '{http://www.itunes.com/dtds/podcast-1.0.dtd}summary':
             rssItunesSummary = item.text  # comes from and goes into CDATA
             if rssItunesSummary == '':
                 rssItunesSummary = None
-        elif item.tag == 'itunes:owner':
+        elif item.tag == '{http://www.itunes.com/dtds/podcast-1.0.dtd}owner':
             continue  # name derived from rss title and email from argv
-        elif item.tag == 'itunes:image':
+        elif item.tag == '{http://www.itunes.com/dtds/podcast-1.0.dtd}image':
             rssImageUrl = item.attrib['href']
             if rssImageUrl == '':
                 rssImageUrl = None
@@ -186,7 +193,7 @@ for channel in rss:
                     image = element.text
                     if image == '':
                         image = None
-                    if rssImageUrl == None and image:
+                    if not rssImageUrl and image:
                         rssImageUrl = image
                 elif element.tag == 'title':
                     rssImageTitle = element.text
@@ -204,15 +211,14 @@ for channel in rss:
                         rssImageHeight = None
         elif item.tag == 'item':
             title = None
-            link = None 
+            link = None
             description = None
-            pubDate = None 
-            enclosure = None 
-            itunesAuthor = None 
-            itunesSubtitle = None 
-            itunesSummary = None 
-            itunesDuration = None 
-            itunesImage = None 
+            pubDate = None
+            itunesAuthor = None
+            itunesSubtitle = None
+            itunesSummary = None
+            itunesDuration = None
+            itunesImage = None
             filename = None
             source = None
             for field in item:
@@ -229,20 +235,21 @@ for channel in rss:
                 elif field.tag == 'pubDate':
                     pubDate = field.text
                 elif field.tag == 'enclosure':
-                    enclosure = field.text
-                elif field.tag == 'itunes:author':
+                    continue  # will be custom from argv
+                elif field.tag == '{http://www.itunes.com/dtds/podcast-1.0.dtd}author':
                     itunesAuthor = field.text
-                elif field.tag == 'itunes:subtitle':
+                elif field.tag == '{http://www.itunes.com/dtds/podcast-1.0.dtd}subtitle':
                     itunesSubtitle = field.text
-                elif field.tag == 'itunes:summary':  # comes from and goes to CDATA
+                elif field.tag == '{http://www.itunes.com/dtds/podcast-1.0.dtd}summary':  # comes from and goes to CDATA
                     itunesSummary = field.text
-                elif field.tag == 'itunes:duration':
+                elif field.tag == '{http://www.itunes.com/dtds/podcast-1.0.dtd}duration':
                     itunesDuration = field.text
                 elif field.tag == 'guid':
                     continue  # will be custom from argv
-                elif field.tag == 'itunes:image':
-                    itunesImage = field.text
-            items[filename] = {'title': title, 'source': source, 'link': link, 'description': description, 'pubDate': pubDate, 'enclosure': enclosure, 'itunesAuthor': itunesAuthor, 'itunesSubtitle': itunesSubtitle, 'itunesSummary': itunesSummary, 'itunesDuration': itunesDuration, 'itunesImage': itunesImage}
+                elif field.tag == '{http://www.itunes.com/dtds/podcast-1.0.dtd}image':
+                    itunesImage = field.attrib['href']
+            items[filename] = {'title': title, 'source': source, 'link': link, 'description': description, 'pubDate': pubDate, 'itunesAuthor': itunesAuthor, 'itunesSubtitle': itunesSubtitle, 'itunesSummary': itunesSummary, 'itunesDuration': itunesDuration, 'itunesImage': itunesImage}
+            filenames.append(filename)  # for diff and sorting purposes only
 
 # download newly available uploads according to rss feed
 download_or_delete(items, files)
@@ -251,47 +258,51 @@ download_or_delete(items, files)
 rssfile = open('rss.xml', 'w')
 rssfile.write('<?xml version="1.0"?>\n')
 rssfile.write('<rss xmlns:atom="http://www.w3.org/2005/Atom"  xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" version="2.0">\n')
-rssfile.write('<channel>\n')
+rssfile.write('    <channel>\n')
 
-rssfile.write('    <title>{}</title>\n'.format(rssTitle))
-rssfile.write('    <atom:link href="http://{}/rss.xml" rel="self" type="application/rss+xml"/>\n'.format(urlbase))
-rssfile.write('    <link>http://{}</link>\n'.format(hostname))
-rssfile.write('    <description><![CDATA[{}]]></description>\n'.format(rssDescription))
-rssfile.write('    <lastBuildDate>{}</lastBuildDate>\n'.format(datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')))
+rssfile.write('        <title>{}</title>\n'.format(rssTitle))
+rssfile.write('        <atom:link href="http://{}/rss.xml" rel="self" type="application/rss+xml"/>\n'.format(urlbase))
+rssfile.write('        <link>http://{}</link>\n'.format(hostname))
+rssfile.write('        <description><![CDATA[{}]]></description>\n'.format(rssDescription))
+rssfile.write('        <lastBuildDate>{}</lastBuildDate>\n'.format(
+    datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')))
 if rssPubDate:
-    rssfile.write('    <pubDate>{}</pubDate>\n'.format(rssPubDate))
-rssfile.write('    <generator>http://github.com/intergalacticfm/mixcast</generator>\n')
+    rssfile.write('        <pubDate>{}</pubDate>\n'.format(rssPubDate))
+rssfile.write('        <generator>http://github.com/intergalacticfm/mixcast</generator>\n')
 if rssLanguage:
-    rssfile.write('    <language>{}</language>\n'.format(rssLanguage))
+    rssfile.write('        <language>{}</language>\n'.format(rssLanguage))
 if rssItunesAuthor:
-    rssfile.write('    <itunes:author>{}</itunes:author>\n'.format(rssItunesAuthor))
+    rssfile.write('        <itunes:author>{}</itunes:author>\n'.format(rssItunesAuthor))
 if rssItunesSubtitle:
-    rssfile.write('    <itunes:subtitle>{}</itunes:subtitle>\n'.format(rssItunesSubtitle))
+    rssfile.write('        <itunes:subtitle>{}</itunes:subtitle>\n'.format(rssItunesSubtitle))
+else:  # for diff purpses only
+    rssfile.write('        <itunes:subtitle></itunes:subtitle>\n')
 if rssItunesSummary:
-    rssfile.write('    <itunes:summary><![CDATA[{}]]></itunes:summary>\n'.format(rssItunesSummary))
-rssfile.write('    <itunes:owner>\n')
-rssfile.write('        <itunes:name>{}</itunes:name>\n'.format(rssTitle))
-rssfile.write('        <itunes:email>{}</itunes:email>\n'.format(email))
-rssfile.write('    </itunes:owner>\n')
-rssfile.write('    <webMaster>{}</webMaster>\n'.format(email))
-rssfile.write('    <managingEditor>{}</managingEditor>\n'.format(email))
-rssfile.write('    <copyright>{}</copyright>\n'.format(rssTitle))
+    rssfile.write('        <itunes:summary><![CDATA[{}]]></itunes:summary>\n'.format(rssItunesSummary))
+rssfile.write('        <itunes:owner>\n')
+rssfile.write('            <itunes:name>{}</itunes:name>\n'.format(rssTitle))
+rssfile.write('            <itunes:email>{}</itunes:email>\n'.format(email))
+rssfile.write('        </itunes:owner>\n')
+rssfile.write('        <webMaster>{}</webMaster>\n'.format(email))
+rssfile.write('        <managingEditor>{}</managingEditor>\n'.format(email))
+rssfile.write('        <copyright>{}</copyright>\n'.format(rssTitle))
+rssfile.write('        <itunes:category text="Music" />\n')
 if rssImageUrl:
-    rssfile.write('    <itunes:image>{}</itunes:image>\n'.format(rssImageUrl))
-    rssfile.write('    <image/>\n')
-    rssfile.write('        <url>{}</url>\n'.format(rssImageUrl))
+    rssfile.write('        <itunes:image>{}</itunes:image>\n'.format(rssImageUrl))
+    rssfile.write('        <image/>\n')
+    rssfile.write('            <url>{}</url>\n'.format(rssImageUrl))
     if rssImageTitle:
-        rssfile.write('        <title>{}</title>\n'.format(rssImageTitle))
-    rssfile.write('        <link>http://{}</link>\n'.format(hostname))
+        rssfile.write('            <title>{}</title>\n'.format(rssImageTitle))
+    else:
+        rssfile.write('            <title>{}</title>\n'.format(rssTitle))
+    rssfile.write('            <link>http://{}</link>\n'.format(hostname))
     if rssImageWidth:
-        rssfile.write('        <width>{}</width>\n'.format(rssImageWidth))
+        rssfile.write('            <width>{}</width>\n'.format(rssImageWidth))
     if rssImageHeight:
-        rssfile.write('        <height>{}</height>\n'.format(rssImageHeight))
-    rssfile.write('    <image/>\n')
-rssfile.write('    <itunes:category text="Music" />\n')
+        rssfile.write('            <height>{}</height>\n'.format(rssImageHeight))
+    rssfile.write('        <image/>\n')
 
-write_items(items, rssfile)
+write_items(items, filenames, rssfile)
 
-rssfile.write('</channel>\n')
+rssfile.write('    </channel>\n')
 rssfile.write('</rss>\n')
-
