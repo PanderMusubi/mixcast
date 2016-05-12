@@ -146,6 +146,10 @@ def write_items(items, filenames, urlbase, rssfile, debug=False):
     """
 
     for filename in filenames:  # for correct sorting
+        if not path.isfile(filename):
+            continue
+        if path.getsize(filename) == 0:
+            continue
         values = items[filename]
         rssfile.write('\n')
         rssfile.write('        <item>\n')
@@ -154,18 +158,21 @@ def write_items(items, filenames, urlbase, rssfile, debug=False):
         rssfile.write('            <link>{}</link>\n'.format(url))
         rssfile.write('            <description><![CDATA[{}]]></description>\n'.format(values['description']))
         rssfile.write('            <pubDate>{}</pubDate>\n'.format(values['pubDate']))
-        rssfile.write('            <enclosure url="{}" length="{}" type="audio/x-m4a"/>\n'.format(url, path.getsize(filename)))
+        try:
+            rssfile.write('            <enclosure url="{}" length="{}" type="audio/x-m4a"/>\n'.format(url, path.getsize(filename)))
+        except:
+            rssfile.write('            <enclosure url="{}" type="audio/x-m4a"/>\n'.format(url))
         if values['itunesAuthor']:
-            rssfile.write('            <itunes:author>{}<itunes:author/>\n'.format(values['itunesAuthor']))
+            rssfile.write('            <itunes:author>{}</itunes:author>\n'.format(values['itunesAuthor']))
         if values['itunesSubtitle']:
-            rssfile.write('            <itunes:subtitle>{}<itunes:subtitle/>\n'.format(values['itunesSubtitle']))
+            rssfile.write('            <itunes:subtitle>{}</itunes:subtitle>\n'.format(values['itunesSubtitle']))
         else:
             if debug:
                 rssfile.write('            <itunes:subtitle></itunes:subtitle>\n')
         if values['itunesSummary']:
-            rssfile.write('            <itunes:summary><![CDATA[{}]]><itunes:summary/>\n'.format(values['itunesSummary']))
+            rssfile.write('            <itunes:summary><![CDATA[{}]]></itunes:summary>\n'.format(values['itunesSummary']))
         if values['itunesDuration']:
-            rssfile.write('            <itunes:duration>{}<itunes:duration/>\n'.format(values['itunesDuration']))
+            rssfile.write('            <itunes:duration>{}</itunes:duration>\n'.format(values['itunesDuration']))
         rssfile.write('            <guid>{}</guid>\n'.format(url))
         if values['itunesImage']:
             rssfile.write('            <itunes:image href="{}" />\n'.format(values['itunesImage']))
@@ -346,7 +353,7 @@ def main():
     rssfile.write('        <itunes:category text="Music" />\n')
     if rssImageUrl:
         rssfile.write('        <itunes:image>{}</itunes:image>\n'.format(rssImageUrl))
-        rssfile.write('        <image/>\n')
+        rssfile.write('        <image>\n')
         rssfile.write('            <url>{}</url>\n'.format(rssImageUrl))
         if rssImageTitle:
             rssfile.write('            <title>{}</title>\n'.format(rssImageTitle))
@@ -357,7 +364,7 @@ def main():
             rssfile.write('            <width>{}</width>\n'.format(rssImageWidth))
         if rssImageHeight:
             rssfile.write('            <height>{}</height>\n'.format(rssImageHeight))
-        rssfile.write('        <image/>\n')
+        rssfile.write('        </image>\n')
 
     write_items(items, filenames, urlbase, rssfile, debug)
 
